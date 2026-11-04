@@ -107,4 +107,73 @@ const setAvailability = async (req, res, next) => {
       return next(new HttpError(error));
     }
   };
-export {setAvailability, cancelAppointments};
+
+const updateAvailability = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { startTime, endTime } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return next(new HttpError("No professor ID found", 400));
+    }
+    if (req.user.role !== "professor") {
+      return next(new HttpError("Only professors can update availability", 403));
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new HttpError("Invalid availability ID", 400));
+    }
+    if (!startTime || !endTime) {
+      return next(new HttpError("startTime and endTime are required", 400));
+    }
+
+    const newStart = new Date(startTime);
+    const newEnd = new Date(endTime);
+    if (isNaN(newStart) || isNaN(newEnd)) {
+      return next(new HttpError("Invalid date format", 400));
+    }
+    if (newStart >= newEnd) {
+      return next(new HttpError("Start time must be before end time", 400));
+    }
+
+    // Slot must exist and belong to this professor
+    const availability = await Availability.findOne({ _id: id, professorId: req.user.id });
+    if (!availability) {
+      return next(new HttpError("Availability slot not found", 404));
+    }
+
+    // Only FREE slots can be changed: no booked appointment inside the current slot window
+    const booked = await Appointment.findOne({
+      professorId: req.user.id,
+      status: "booked",
+      time: { $gte: availability.startTime, $lt: availability.endTime },
+    });
+    if (booked) {
+      return next(new HttpError("This slot is already booked and cannot be updated", 409));
+    }
+
+    // New timing must not overlap the professor's OTHER slots
+    const overlap = await Availability.findOne({
+      _id: { $ne: id },
+      professorId: req.user.id,
+      startTime: { $lt: newEnd },
+      endTime: { $gt: newStart },
+    });
+    if (overlap) {
+      return next(new HttpError("New time overlaps another availability slot", 400));
+    }
+
+    // Update in place (same document, same _id)
+    availability.startTime = newStart;
+    availability.endTime = newEnd;
+    await availability.save();
+
+    res.status(200).json({
+      message: "Availability updated successfully",
+      availability, // raw ISO dates, which the Postman test compares against
+    });
+  } catch (error) {
+    console.log(error);
+    return next(new HttpError("Updating availability failed", 500));
+  }
+};
+export {setAvailability, cancelAppointments, updateAvailability};
