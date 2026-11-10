@@ -4,10 +4,11 @@
   "description": "The backend for a student and professor appointment system",
   "main": "index.js",
   "type": "module",
-  "scripts": {
-    "dev": "nodemon server.js",
-    "test": "jest"
-  },
+"scripts": {
+  "dev": "nodemon index.js",
+  "start": "node index.js",
+  "test": "jest"
+},
   "author": "",
   "license": "ISC",
   "dependencies": {
